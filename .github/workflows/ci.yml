@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  use-the-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7      # needed so ./actions/test-summary exists on the runner
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: ./actions/test-summary
+        with:
+          command: python -m unittest discover -s tests -v
+
+  self-test-failure-path:
+    # The action must report "failed" and, with fail-on-error false, must not fail the job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: act
+        uses: ./actions/test-summary
+        with:
+          command: "echo about to fail; exit 3"
+          fail-on-error: "false"
+      - name: Assert the output
+        env:
+          STATUS: ${{ steps.act.outputs.status }}
+        run: |
+          test "$STATUS" = "failed" || { echo "::error::expected failed, got $STATUS"; exit 1; }
+          echo "failure path reported correctly"
+
+  self-test-injection:
+    # A command with quotes and $() must be run as a command, not break the action's script.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: act
+        uses: ./actions/test-summary
+        with:
+          command: "echo \"quoted $(echo ok) 'text'\""
+      - env:
+          STATUS: ${{ steps.act.outputs.status }}
+        run: test "$STATUS" = "passed"

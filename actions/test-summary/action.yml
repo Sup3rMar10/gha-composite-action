@@ -1,0 +1,51 @@
+name: test-summary
+description: Run a command, write a pass/fail summary to the job summary, and expose the status.
+
+inputs:
+  command:
+    description: Command to run
+    required: true
+  fail-on-error:
+    description: Fail the step when the command fails
+    default: "true"
+
+outputs:
+  status:
+    description: passed or failed
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        # Passed through env, never interpolated into the script: a command containing
+        # quotes or $() cannot break out of the script this way.
+        CMD: ${{ inputs.command }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+      run: |
+        start=$(date +%s)
+        set +e
+        output=$(bash -c "$CMD" 2>&1)
+        code=$?
+        set -e
+        seconds=$(( $(date +%s) - start ))
+        status=passed
+        [ "$code" -ne 0 ] && status=failed
+        {
+          echo "### Test summary"
+          echo "- status: **$status**"
+          echo "- exit code: $code"
+          echo "- seconds: $seconds"
+          echo "<details><summary>last 40 lines of output</summary>"
+          echo
+          echo '```'
+          echo "$output" | tail -n 40
+          echo '```'
+          echo "</details>"
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        if [ "$code" -ne 0 ] && [ "$FAIL_ON_ERROR" = "true" ]; then
+          exit "$code"
+        fi
